@@ -1,0 +1,110 @@
+---
+title: "Course Project - Practical Machine Learning"
+author: "Paulo Vinicius Ferraz Correa"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Summary
+
+In this project we will predict if one exercise was made correctly or not. Six participants were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in five different fashions. One of them represents the exercise done correctly (Class A) and the others had mistakes. The dataset comes from <http://groupware.les.inf.puc-rio.br/har> and represents data from accelerometers on the belt, forearm, arm, and dumbell.
+
+### Load and clean data
+
+```{r}
+# Load csv
+pml.train <- read.csv('pml-training.csv')
+pml.validate <- read.csv('pml-testing.csv')
+
+# Remove columns with missing values
+pml.train <- pml.train[, colSums(is.na(pml.train)) == 0]
+pml.train <- pml.train[, colSums(pml.train == "") == 0]
+
+pml.validate <- pml.validate[, colSums(is.na(pml.validate)) == 0]
+pml.validate <- pml.validate[, colSums(pml.validate == "") == 0]
+
+# Remove the first 7 columns, as they do not have impact in the outcome
+pml.train <- pml.train[, -1:-7]
+pml.validate <- pml.validate[, -1:-7]
+```
+
+
+### Split data in train and test
+Here we will split the training data into 70% train and 30% test data.
+```{r, message=FALSE, warning=FALSE}
+set.seed(1234) # set the seed to always get the same results
+library(caret)
+library(randomForest)
+library(corrplot)
+```
+```{r}
+inTrain <- createDataPartition(pml.train$classe, p = 0.7, list = FALSE)
+train <- pml.train[inTrain, ]
+test <- pml.train[-inTrain, ]
+```
+
+### Remove highly correalated data
+Now we will evaluate the correlation within the variables.
+
+```{r}
+cor_matrix <- cor(train[, -53])
+corrplot(cor_matrix, method = "color", tl.cex = 0.5)
+```
+
+We can see there are a few variables that are highly correlated. We should  remove them to reduce pair-wise correlations, as they have little information to add in the model and it will reduce computational time to fit it. We will use a cutoff value of 0.8. The removed columns are shown below.
+
+```{r}
+highlyCorrelated = findCorrelation(cor_matrix, cutoff=0.8)
+removed_columns <- colnames(train)[highlyCorrelated]
+
+train <- train[, -highlyCorrelated]
+test <- test[, -highlyCorrelated]
+pml.validate <- pml.validate[, -highlyCorrelated]
+
+removed_columns
+```
+
+
+## Model
+
+Next we will fit a **RandomForest** model to predict the classes, using **5-fold-cross-validation** when applying the algorithm.
+I previously also tested a boosted trees ("gbm") and linear discriminant analysis ("lda") models, but I had better accuracy with RandomForest. I also achieved best results using 250 trees (the default 500 showed no significant increase in accuracy).
+
+```{r}
+controlRF <- trainControl(method="cv", number=5, verboseIter=FALSE)
+modRF <- train(classe ~ ., data=train, method="rf", trControl=controlRF, ntree=250)
+```
+
+### Evaluation
+Now we can evaluate the model by looking at Accuracy and confusion matrix.
+
+```{r}
+pred <- predict(modRF, test)
+conf_matrix <- confusionMatrix(pred, factor(test$classe))
+conf_matrix
+```
+
+The **accuracy** in the test set using randomForest is very high: *`r round(conf_matrix$overall[1]*100, 2)`%*.
+The **out-of-sample-error** is *`r round((1-conf_matrix$overall[1])*100, 2)`%*.
+
+
+
+```{r, fig.align='center'}
+plot(modRF$finalModel, main="RandomFlorest Model")
+```
+
+In this plot we can see that the error has reached minimal values with 250 trees.
+
+
+## Conclusion
+
+We achieved a model with a high accuracy to predict when a exercise was made correctly or not, and which type of mistake was made. 
+Now, we can apply the model to the original test data, which will be used to answer the “Course Project Prediction Quiz”.
+```{r}
+results <- predict(modRF, newdata=pml.validate)
+results
+```
+
