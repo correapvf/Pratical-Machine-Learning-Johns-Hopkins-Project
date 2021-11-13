@@ -1,7 +1,9 @@
 ---
 title: "Course Project - Practical Machine Learning"
 author: "Paulo Vinicius Ferraz Correa"
-output: html_document
+output:
+    html_document:
+        self_contained: no
 ---
 
 ```{r setup, include=FALSE}
